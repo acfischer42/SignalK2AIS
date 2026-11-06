@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13
+
+- Publish releases through GitHub Actions with npm trusted publishing and provenance.
+- Run Signal K's shared plugin CI on Linux x64/arm64, macOS and Windows.
+- Add package metadata, MIT license, release instructions and changelog.
+- Include matching icons at the package root and webapp serving root for App Store compatibility.
+
 ## 0.1.12
 
 - Send voyage updates with one button, without a separate preview screen.

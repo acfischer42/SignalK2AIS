@@ -26,12 +26,12 @@ npm run check
 npm pack
 ```
 
-Copy the resulting `signalk-write-ais-nmea0183-0.1.12.tgz` to your GX. In the
+Copy the resulting `signalk-write-ais-nmea0183-0.1.13.tgz` to your GX. In the
 **Signal K configuration directory** (the directory containing its `settings.json`
 and `node_modules`, not necessarily `/data`), run:
 
 ```sh
-npm install /path/to/signalk-write-ais-nmea0183-0.1.12.tgz
+npm install /path/to/signalk-write-ais-nmea0183-0.1.13.tgz
 ```
 
 Restart Signal K. Under **Server -> Plugin Config -> SignalK2AIS**, configure:
@@ -105,6 +105,10 @@ In the npm package **Settings -> Trusted Publisher**, select **GitHub Actions**:
 - Repository: `SignalK2AIS`
 - Workflow filename: `publish.yml`
 - Environment: `npm`
+
+Enable direct publishing (`npm publish`) in **Allowed actions**; separate
+dist-tag management is not required. Stage-only access would require a
+different release workflow with manual npm approval.
 
 The GitHub repository needs an environment named `npm` (created for this
 repository). You can add required reviewers there to approve releases.

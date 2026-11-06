@@ -1,6 +1,6 @@
 {
   "name": "signalk-write-ais-nmea0183",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Set AIS voyage data through an existing Signal K serial connection.",
   "author": "acfischer42",
   "license": "MIT",
@@ -9,14 +9,37 @@
     "url": "git+https://github.com/acfischer42/SignalK2AIS.git"
   },
   "homepage": "https://github.com/acfischer42/SignalK2AIS#readme",
-  "bugs": { "url": "https://github.com/acfischer42/SignalK2AIS/issues" },
-  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "bugs": {
+    "url": "https://github.com/acfischer42/SignalK2AIS/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "index.js",
-  "engines": { "node": ">=18" },
-  "keywords": ["signalk-node-server-plugin", "signalk-webapp", "signalk-category-ais", "signalk-category-nmea-0183"],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-ais",
+    "signalk-category-nmea-0183"
+  ],
   "signalk-plugin-enabled-by-default": false,
-  "signalk": { "displayName": "SignalK2AIS", "appIcon": "./icon.svg" },
-  "files": ["index.js", "lib", "public", "icon.svg", "README.md", "CHANGELOG.md", "LICENSE"],
+  "signalk": {
+    "displayName": "SignalK2AIS",
+    "appIcon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "public",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test test/*.test.js",
     "check": "node --check index.js && node --check lib/voyage.js && node --check lib/readback.js && node --check public/app.js"
