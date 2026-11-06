@@ -70,6 +70,9 @@ on an unsecured/public Signal K instance.
 
 ## CI and npm releases
 
+See the repository's [publishing guide](https://github.com/acfischer42/SignalK2AIS/blob/main/publishing.md) for the step-by-step release checklist,
+trusted-publisher configuration, Ekrano installation and troubleshooting.
+
 Source and workflows: [acfischer42/SignalK2AIS](https://github.com/acfischer42/SignalK2AIS).
 
 ### Continuous integration
