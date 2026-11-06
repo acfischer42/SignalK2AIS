@@ -16,7 +16,7 @@
   "keywords": ["signalk-node-server-plugin", "signalk-webapp", "signalk-category-ais", "signalk-category-nmea-0183"],
   "signalk-plugin-enabled-by-default": false,
   "signalk": { "displayName": "SignalK2AIS", "appIcon": "./icon.svg" },
-  "files": ["index.js", "lib", "public", "README.md", "CHANGELOG.md", "LICENSE"],
+  "files": ["index.js", "lib", "public", "icon.svg", "README.md", "CHANGELOG.md", "LICENSE"],
   "scripts": {
     "test": "node --test test/*.test.js",
     "check": "node --check index.js && node --check lib/voyage.js && node --check lib/readback.js && node --check public/app.js"

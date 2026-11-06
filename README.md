@@ -61,6 +61,8 @@ version; it does not prove that cached browser assets are current.
 The bundled `public/icon.svg` is used in the header, browser tab and Signal K
 Webapps list (via `signalk.appIcon` in `package.json`). Restart Signal K and reload
 its admin page after upgrading to refresh the webapp metadata.
+An identical root `icon.svg` is included for package-relative App Store/CDN
+lookups; tests ensure it matches the public copy.
 
 Use an administrator login in the Signal K admin UI on the **same origin** first.
 The server's plugin router provides authentication; do not expose write access

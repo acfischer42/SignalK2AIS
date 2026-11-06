@@ -109,6 +109,10 @@ test('page is branded SignalK2AIS without the old eyebrow', async () => {
   assert.match(html, /rel="icon" type="image\/svg\+xml" href="icon.svg"/)
   assert.equal(signalk.appIcon, './icon.svg')
   assert.match(readFileSync(join(__dirname, '../public', signalk.appIcon), 'utf8'), /<svg xmlns=/)
+  assert.equal(
+    readFileSync(join(__dirname, '..', signalk.appIcon), 'utf8'),
+    readFileSync(join(__dirname, '../public', signalk.appIcon), 'utf8')
+  )
   assert.doesNotMatch(html, /preview-button|confirmation-heading|cancel-button/)
 })
 
