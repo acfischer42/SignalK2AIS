@@ -1,0 +1,21 @@
+name: SignalK Plugin CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@38f96b7520957ac04055e6a4838442eeb3fb5d5c
+    with:
+      build-command: npm run check

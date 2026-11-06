@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SignalK2AIS</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">
+        <img class="brand-mark" src="icon.svg" width="58" height="58" alt="">
+        <h1>SignalK2AIS</h1>
+      </div>
+      <p id="plugin-version" class="hint">Running plugin version: loading...</p>
+      <p>Set your destination, arrival time and navigational status.</p></header>
+    <p id="connection" role="status">Loading Signal K data...</p>
+    <section aria-labelledby="vessel-heading">
+      <h2 id="vessel-heading">Vessel details <small>Read-only from Signal K</small></h2>
+      <dl class="details">
+        <div><dt>Ship type</dt><dd id="ship-type">Unavailable</dd></div>
+        <div><dt>Beam</dt><dd id="beam">Unavailable</dd></div>
+        <div><dt>Overall length</dt><dd id="length">Unavailable</dd></div>
+        <div><dt>Maximum draught</dt><dd id="draft">Unavailable</dd></div>
+      </dl>
+      <p class="hint">Ship type and maximum draught are included in every voyage command.
+        Beam and length are displayed only; AIS identity and dimensions are not changed.</p>
+    </section>
+    <form id="voyage-form">
+      <h2>Voyage details</h2>
+      <p class="hint">Fields are prefilled from the latest AIS readback when available and are not overwritten after you edit them.</p>
+      <label for="destination">Destination</label>
+      <input id="destination" name="destination" type="text" maxlength="20"
+        autocomplete="off" placeholder="e.g. VIENNA" aria-describedby="destination-hint">
+      <p id="destination-hint" class="hint">Up to 20 characters. Converted to uppercase; no commas or accented letters. Blank clears destination to not available.</p>
+      <label for="eta">Estimated arrival <span id="timezone"></span></label>
+      <input id="eta" name="eta" type="datetime-local" step="60" aria-describedby="eta-hint">
+      <p id="eta-hint" class="hint">Enter local time; the command uses UTC. AIS transmits month and day, not the year; a readback fills the next occurrence. Blank clears ETA to not available.</p>
+      <label for="navigation-status">Navigational status</label>
+      <select id="navigation-status" name="navigationStatus" required>
+        <option value="">Choose the current status</option>
+      </select>
+      <label for="personnel-mode">Personnel mode</label>
+      <select id="personnel-mode">
+        <option value="maritime">Maritime — one persons-on-board total (VSD)</option>
+        <option value="inland" selected>Inland — crew, passengers and other personnel (PIWWIVD)</option>
+      </select>
+      <div id="maritime-personnel" hidden>
+        <label for="persons">Persons on board</label>
+        <input id="persons" name="personsOnBoard" type="number" min="0" max="8191" step="1" disabled>
+        <p class="hint">Blank sets the maritime persons total to unavailable.</p>
+      </div>
+      <fieldset id="inland-personnel">
+        <legend>Inland personnel</legend>
+        <label for="crew">Crew</label>
+        <input id="crew" type="number" min="0" max="254" step="1">
+        <label for="passengers">Passengers</label>
+        <input id="passengers" type="number" min="0" max="8190" step="1">
+        <label for="other-personnel">Other personnel</label>
+        <input id="other-personnel" type="number" min="0" max="254" step="1">
+        <p class="hint">Blank clears that count to unknown; zero explicitly means none. Sends PIWWIVD fields 7–9;
+          other Inland settings are left unchanged. VSD receives the computed total
+          (8191 = unavailable if the total exceeds 8190).</p>
+      </fieldset>
+      <p class="warning">This is a real AIS update. Every submission replaces the complete VSD voyage data,
+        including ship type, draught, persons, ETA and navigational status.
+        Blank fields clear values to not available; they do not preserve existing values.</p>
+      <button id="send-button" type="submit" disabled>Send to AIS</button>
+    </form>
+    <p id="message" role="status" aria-live="polite"></p>
+    <p id="last-submission" class="hint"></p>
+    <footer>Use a Signal K administrator login. After submitting, verify <strong>Voyage Data</strong>
+      on your AIS display. Serial output cannot confirm that the AIS accepted the command.</footer>
+    <details id="diagnostics">
+      <summary>AIS diagnostics</summary>
+      <p id="readback-status" role="status" aria-live="polite">Loading diagnostics...</p>
+      <p id="readback-source" class="hint"></p>
+      <h3>Last TX <small>Submitted to Signal K serial output</small></h3>
+      <p id="tx-time" class="hint">No submission yet.</p>
+      <pre id="tx-sentence">No outgoing sentence yet.</pre>
+      <h3>Last related RX <small>Own-vessel reports only</small></h3>
+      <p id="rx-time" class="hint">No related AIS sentence received yet.</p>
+      <h3>Last voyage readback <small>Decoded message 5</small></h3>
+      <p id="voyage-rx-summary" class="hint">No complete voyage report yet.</p>
+      <h3>Last navigational-status readback <small>Message 1, 2 or 3</small></h3>
+      <p id="navigation-rx-summary" class="hint">No navigational-status report yet.</p>
+      <h3>Last Inland personnel readback <small>PIWWIVD</small></h3>
+      <p id="personnel-rx-summary" class="hint">No PIWWIVD personnel report received yet.</p>
+      <div class="table-scroll">
+        <table id="readback-table" hidden>
+          <caption>Comparison with latest submission (post-submission reports only)</caption>
+          <thead><tr><th scope="col">Field</th><th scope="col">Submitted</th><th scope="col">Received</th><th scope="col">Result</th></tr></thead>
+          <tbody id="readback-fields"></tbody>
+        </table>
+      </div>
+      <p id="rx-error" class="warning" hidden></p>
+      <button id="refresh-diagnostics" type="button" class="secondary">Refresh diagnostics</button>
+      <p class="hint">Updates every 10 seconds. Matching readback is not a command acknowledgement.
+        Inland counts are compared only when PIWWIVD arrives after submission on the AIS input event.
+        A returned PIWWIVD may be an echo; it does not prove stored settings changed.
+        The maritime persons total, regional flags, ETA year and seconds are not verified.
+        Reports and submission history are kept in memory and reset when the plugin restarts.</p>
+    </details>
+  </main>
+</body>
+</html>
