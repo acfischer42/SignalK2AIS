@@ -70,6 +70,11 @@ on an unsecured/public Signal K instance.
 
 ## CI and npm releases
 
+An empty startup configuration leaves the plugin explicitly unconfigured with
+all AIS writes disabled; partial or invalid configuration still reports errors.
+The App Store screenshot uses fictional demonstration values. Matching copies
+at the package root and in `public/` support both CDN and Webapps asset lookup.
+
 See the repository's [publishing guide](https://github.com/acfischer42/SignalK2AIS/blob/main/publishing.md) for the step-by-step release checklist,
 trusted-publisher configuration, Ekrano installation and troubleshooting.
 

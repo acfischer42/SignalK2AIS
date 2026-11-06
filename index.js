@@ -73,6 +73,11 @@ module.exports = function (app) {
     }),
     start(options) {
       plugin.stop()
+      if (options === undefined || (options !== null && typeof options === 'object' &&
+          !Array.isArray(options) && Object.keys(options).length === 0)) {
+        app.setPluginStatus('Not configured: set Data Connection ID and regional flags in Plugin Config. AIS writes are disabled.')
+        return
+      }
       try {
         if (!options || typeof options.providerId !== 'string' ||
             !/^[A-Za-z0-9_-]+$/.test(options.providerId) ||

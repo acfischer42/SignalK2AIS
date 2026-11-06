@@ -29,13 +29,15 @@
   "signalk-plugin-enabled-by-default": false,
   "signalk": {
     "displayName": "SignalK2AIS",
-    "appIcon": "./icon.svg"
+    "appIcon": "./icon.svg",
+    "screenshots": ["./screenshot.png"]
   },
   "files": [
     "index.js",
     "lib",
     "public",
     "icon.svg",
+    "screenshot.png",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

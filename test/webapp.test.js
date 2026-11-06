@@ -114,6 +114,13 @@ test('page is branded SignalK2AIS without the old eyebrow', async () => {
     readFileSync(join(__dirname, '../public', signalk.appIcon), 'utf8')
   )
   assert.doesNotMatch(html, /preview-button|confirmation-heading|cancel-button/)
+  for (const screenshot of signalk.screenshots) {
+    const rootImage = readFileSync(join(__dirname, '..', screenshot))
+    assert.deepEqual(rootImage, readFileSync(join(__dirname, '../public', screenshot)))
+    assert.equal(rootImage.readUInt32BE(16), 1280)
+    assert.equal(rootImage.readUInt32BE(20), 800)
+    assert.ok(rootImage.length < 500000)
+  }
 })
 
 test('first readback fills editable form values and converts AIS UTC ETA to local datetime', async () => {

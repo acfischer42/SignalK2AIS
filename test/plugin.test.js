@@ -262,12 +262,28 @@ test('rejects cross-site requests and logs validation errors', () => {
 })
 
 test('invalid startup configuration fails loudly and releases subscriptions', () => {
-  for (const options of [undefined, { providerId: 'ais' }, { providerId: '../ais', regionalFlags: 0 }]) {
+  for (const options of [null, [], { providerId: 'ais' }, { providerId: '../ais', regionalFlags: 0 }]) {
     const f = fixture()
     assert.throws(() => f.plugin.start(options))
     assert.equal(f.isSubscribed(), false)
     assert.equal(f.request('GET', '/state').body.running, false)
     assert.ok(f.errors.length > 0)
+  }
+})
+
+test('empty startup configuration stays visibly unconfigured across stop and restart without AIS writes', () => {
+  const f = fixture()
+  const statuses = []
+  f.app.setPluginStatus = status => statuses.push(status)
+  f.app.on('serial-ais-toStdout', () => assert.fail('Unconfigured plugin must not send'))
+  for (const options of [{}, undefined, {}]) {
+    f.plugin.start(options)
+    assert.equal(f.request('GET', '/state').body.running, false)
+    assert.equal(f.request('POST', '/voyage', input).status, 503)
+    assert.equal(f.isSubscribed(), false)
+    assert.equal(f.stateSubscribed(), false)
+    assert.match(statuses.at(-1), /Not configured/)
+    f.plugin.stop()
   }
 })
 

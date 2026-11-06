@@ -229,11 +229,13 @@ put an npm token into this repository.
 
 - **CI fails:** inspect the failing job before tagging or retrying publication.
   `gh run view RUN_ID --repo acfischer42/SignalK2AIS --log-failed` shows failures.
-- **Empty configuration warning:** the plugin requires an explicitly configured
-  AIS connection, so shared CI warns when testing `start({})`. Do not bypass
-  connection validation or enable the plugin by default just to hide a warning.
-- **No screenshots warning:** optional App Store screenshots are not currently
-  configured. This does not block publication.
+- **Empty configuration:** `start({})` stays unconfigured and disables AIS writes.
+  Partial or invalid configuration still fails explicitly; do not enable the
+  plugin by default just to pass CI.
+- **Screenshot warnings:** keep declared screenshots in both the package root
+  and `public/`, matching the icon layout. Use fictional demonstration values.
+- **Runner notices:** Ubuntu image migration and macOS capacity notices come
+  from GitHub's hosted runners, not from the plugin. They require no code fix.
 - **OIDC authentication fails:** verify all four trusted-publisher identity
   fields, direct-publish permission, the GitHub environment, npm version and the
   job's `id-token: write` permission. Do not add a token as a workaround.
