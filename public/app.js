@@ -37,7 +37,9 @@ async function request(path, body) {
 }
 
 function updateButtons() {
-  element('send-button').disabled = busy || !state?.running || !state?.connection.available
+  const waitingState = state?.navigationState?.mode !== undefined &&
+    state.navigationState.mode !== 'manual' && !state.navigationState.current
+  element('send-button').disabled = busy || !state?.running || !state?.connection.available || waitingState
   element('send-button').textContent = busy ? 'Sending...' : 'Send to AIS'
 }
 
@@ -54,7 +56,10 @@ function localEtaForNextOccurrence(eta, now = new Date()) {
     }
   }
   if (timestamp === undefined) return ''
-  const date = new Date(timestamp)
+  return localDateTime(new Date(timestamp))
+}
+
+function localDateTime(date) {
   const pad = value => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
@@ -68,8 +73,9 @@ function populateFieldOnce(id, value) {
 
 function populateFormFromReadback(diagnostics) {
   const { voyage, navigation, personnel } = diagnostics
-  populateFieldOnce('destination', voyage?.destination)
-  populateFieldOnce('eta', localEtaForNextOccurrence(voyage?.eta))
+  populateFieldOnce('destination', voyage ? voyage.destination : state.signalKDefaults?.destination)
+  populateFieldOnce('eta', voyage ? localEtaForNextOccurrence(voyage.eta)
+    : state.signalKDefaults?.eta ? localDateTime(new Date(state.signalKDefaults.eta)) : '')
   const navigationStatus = state?.navigationStatuses.find(item => item.id === navigation?.navigationStatus)
   populateFieldOnce('navigation-status', navigationStatus?.id)
   populateFieldOnce('crew', personnel?.crew)
@@ -89,6 +95,10 @@ function showLastSubmission(submission) {
 }
 
 function showDiagnostics(diagnostics) {
+  const automatic = state?.navigationState?.lastSubmission
+  element('automatic-status-tx').textContent = automatic
+    ? `Last automatic status submission: ${automatic.submittedAt} | status ${automatic.status} | ${automatic.sentence}. Not an AIS acknowledgement.`
+    : 'No automatic status command submitted since plugin restart.'
   const labels = {
     'no-submission': 'No command submitted yet. Received reports are shown below.',
     waiting: 'Submitted; no related post-submission readback yet.',
@@ -146,6 +156,8 @@ async function loadState() {
   try {
     const next = await request('state')
     state = next
+    element('voyage-reminder').hidden = !state.reminder
+    element('reminder-message').textContent = state.reminder?.message ?? ''
     element('plugin-version').textContent = `Running plugin version: ${state.version}`
     const vessel = state.vessel
     element('ship-type').textContent = vessel.shipType.id === null ? 'Unavailable'
@@ -159,6 +171,12 @@ async function loadState() {
       for (const status of state.navigationStatuses) select.add(new Option(status.name, String(status.id)))
     }
     populateFormFromReadback(state.diagnostics)
+    const managedState = state.navigationState && state.navigationState.mode !== 'manual'
+    select.disabled = Boolean(managedState)
+    if (managedState) select.value = state.navigationState.current ? String(state.navigationState.current.status) : ''
+    element('navigation-state-hint').textContent = managedState
+      ? `Using navigation.state from ${state.navigationState.source}: ${state.navigationState.current?.value ?? 'waiting for a supported value'}. Mode: ${state.navigationState.mode}.`
+      : 'Choose the current AIS navigational status.'
     element('connection').textContent = !state.running ? 'Plugin disabled: enable it in Plugin Config.'
       : state.connection.available
         ? `Serial output configured: ${state.connection.providerId} (${state.connection.event}). Regional flags: ${state.regionalFlags}. AIS acceptance is not monitored.`
@@ -205,7 +223,7 @@ function personnelInput() {
 
 form.addEventListener('submit', async event => {
   event.preventDefault()
-  if (busy || !state?.running || !state?.connection.available || !form.reportValidity()) return
+  if (busy || element('send-button').disabled || !form.reportValidity()) return
   const revision = formRevision
   busy = true
   updateButtons()
@@ -227,6 +245,7 @@ form.addEventListener('submit', async event => {
     }
     // Validate without a user-facing preview, retaining server-side stale-data checks.
     const validated = await request('preview', input)
+    input.navigationStatus = validated.navigationStatus
     if (formRevision !== revision) {
       throw new Error('Form changed while preparing the command. Nothing was sent; send again.')
     }
@@ -252,6 +271,18 @@ form.addEventListener('submit', async event => {
 })
 
 loadState()
+element('reviewed-button').addEventListener('click', async () => {
+  element('reviewed-button').disabled = true
+  try {
+    const result = await request('reminders/clear', {})
+    element('voyage-reminder').hidden = true
+    message(result.message)
+  } catch (error) {
+    message(error.message, true)
+  } finally {
+    element('reviewed-button').disabled = false
+  }
+})
 element('refresh-diagnostics').addEventListener('click', () => { if (!busy) loadState() })
 const refresh = window.setInterval(() => { if (!busy) loadState() }, 10000)
 window.addEventListener('pagehide', () => window.clearInterval(refresh))

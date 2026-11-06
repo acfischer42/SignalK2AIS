@@ -20,6 +20,17 @@ function fixture() {
   app.setPluginStatus = () => {}
   app.setPluginError = message => errors.push(message)
   app.error = message => errors.push(message)
+  let stateCallback
+  let stateSubscribed = false
+  app.selfId = 'urn:mrn:imo:mmsi:205682570'
+  app.subscriptionmanager = {
+    subscribe(subscription, unsubscribes, error, callback) {
+      assert.equal(subscription.context, 'vessels.self')
+      stateCallback = callback
+      stateSubscribed = true
+      unsubscribes.push(() => { stateSubscribed = false })
+    }
+  }
   let subscribed = false
   let publish
   app.onPropertyValues = (name, callback) => {
@@ -46,13 +57,116 @@ function fixture() {
     routes.get(`${method} ${path}`)(req, res)
     return result
   }
-  return { app, plugin, request, data, errors, isSubscribed: () => subscribed, publish: history => publish(history) }
+  return {
+    app, plugin, request, data, errors, isSubscribed: () => subscribed, publish: history => publish(history),
+    stateSubscribed: () => stateSubscribed,
+    stateDelta: (value, source = 'signalk-autostate', context = 'vessels.self') => stateCallback({
+      context, updates: [{ source: { label: source }, values: [{ path: 'navigation.state', value }] }]
+    })
+  }
 }
 
 const input = {
   destination: 'VIENNA', eta: '2026-11-15T12:00:00.000Z',
   navigationStatus: 5, personsOnBoard: 3
 }
+
+test('reminders work in manual mode, ignore AIS, clear through protected API and never send commands', async () => {
+  const f = fixture()
+  const published = []
+  f.app.handleMessage = (id, delta) => published.push({ id, delta })
+  f.app.on('serial-ais-toStdout', () => assert.fail('Reminder must not write AIS'))
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, enableVoyageReminders: true, reminderDelaySeconds: 1 })
+  try {
+    assert.equal(f.stateSubscribed(), true)
+    f.stateDelta('moored')
+    f.stateDelta('motoring', 'ais')
+    assert.equal(published.length, 0)
+    f.stateDelta('motoring')
+    await new Promise(resolve => setTimeout(resolve, 1100))
+    assert.equal(published.length, 1)
+    assert.equal(published[0].delta.updates[0].values[0].path, 'notifications.aisVoyage.checklist')
+    assert.match(f.request('GET', '/state').body.reminder.message, /Departing/)
+    assert.equal(f.request('POST', '/reminders/clear', {}, { Origin: 'http://other' }).status, 403)
+    assert.equal(f.request('POST', '/reminders/clear', {}).status, 200)
+    assert.equal(published.at(-1).delta.updates[0].values[0].value, null)
+    assert.equal(f.request('GET', '/state').body.reminder, null)
+  } finally {
+    f.plugin.stop()
+  }
+  assert.equal(f.stateSubscribed(), false)
+})
+
+test('reminders are opt-in and configuration validates checkbox and delay', () => {
+  const f = fixture()
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0 })
+  assert.equal(f.stateSubscribed(), false)
+  assert.equal(f.plugin.schema().properties.enableVoyageReminders.default, false)
+  assert.throws(() => f.plugin.start({ providerId: 'ais', regionalFlags: 0, enableVoyageReminders: 'true' }), /boolean/)
+  assert.throws(() => f.plugin.start({ providerId: 'ais', regionalFlags: 0, reminderDelaySeconds: 0 }), /Reminder delay/)
+})
+
+test('navigation.state on-send uses autostate and ignores AIS and other vessels', () => {
+  const f = fixture()
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, navigationStateMode: 'on-send' })
+  assert.equal(f.request('POST', '/preview', input).status, 422)
+  f.stateDelta('sailing', 'ais')
+  f.stateDelta('sailing', 'signalk-autostate', 'vessels.other')
+  assert.equal(f.request('POST', '/preview', input).status, 422)
+  f.stateDelta('motoring')
+  const preview = f.request('POST', '/preview', input)
+  assert.equal(preview.body.navigationStatus, 0)
+  f.stateDelta('anchored')
+  f.app.on('serial-ais-toStdout', () => assert.fail('stale status must not send'))
+  assert.equal(f.request('POST', '/voyage', { ...input, confirmedSentence: preview.body.sentence }).status, 409)
+  f.plugin.stop()
+  assert.equal(f.stateSubscribed(), false)
+})
+
+test('automatic state sends status only, deduplicates and never publishes commanded values to Signal K', () => {
+  const f = fixture()
+  const sent = []
+  f.app.handleMessage = () => assert.fail('Must not publish requested values')
+  f.app.on('serial-ais-toStdout', sentence => sent.push(sentence))
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, navigationStateMode: 'automatic' })
+  f.stateDelta('moored', 'ais')
+  f.stateDelta('moored')
+  f.stateDelta('moored')
+  f.stateDelta('motoring')
+  assert.equal(sent.length, 2)
+  for (const [index, sentence] of sent.entries()) {
+    const fields = sentence.slice(1, -3).split(',')
+    assert.equal(fields.length, 10)
+    assert.equal(fields[8], index === 0 ? '5' : '0')
+    assert.ok(fields.slice(1, 8).every(field => field === ''))
+    assert.equal(fields[9], '')
+  }
+  assert.equal(f.request('GET', '/state').body.lastSubmission, null)
+  assert.equal(f.request('GET', '/state').body.navigationState.lastSubmission.status, 0)
+  f.stateDelta('unsupported')
+  assert.equal(f.request('GET', '/state').body.navigationState.current, null)
+  assert.ok(f.errors.some(message => message.includes('Unsupported navigation.state')))
+})
+
+test('automatic send failures are explicit and not retried on repeated reports', () => {
+  const f = fixture()
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, navigationStateMode: 'automatic' })
+  f.stateDelta('moored')
+  const count = f.errors.length
+  assert.ok(count > 0)
+  f.stateDelta('moored')
+  assert.equal(f.errors.length, count)
+  assert.equal(f.request('GET', '/state').body.navigationState.lastSubmission, null)
+})
+
+test('Signal K destination and ETA are exposed for form fallback without publishing anything', () => {
+  const f = fixture()
+  f.data['navigation.destination.commonName'] = { value: 'BRYC' }
+  f.data['navigation.destination.eta'] = { value: '2026-11-06T08:30:00Z' }
+  assert.deepEqual(f.request('GET', '/state').body.signalKDefaults, {
+    destination: 'BRYC', eta: '2026-11-06T08:30:00.000Z'
+  })
+})
 
 test('exposes package version in server state and plugin configuration descriptions', () => {
   const f = fixture()

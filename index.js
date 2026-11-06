@@ -3,6 +3,8 @@
 const { NAV_STATUSES, RequestError, integer, vesselDetails, buildVoyage } = require('./lib/voyage')
 const { Readback, ReadbackError } = require('./lib/readback')
 const { version } = require('./package.json')
+const { stateStatus, statusSentence, signalKDefaults } = require('./lib/navigation')
+const { Reminders } = require('./lib/reminders')
 
 module.exports = function (app) {
   let running = false
@@ -12,6 +14,11 @@ module.exports = function (app) {
   let lastSubmission = null
   let readback = new Readback()
   let inputEvent = null
+  let stateUnsubscribes = []
+  let navigationState = null
+  let lastAutomaticStatus = null
+  let lastStatusSubmission = null
+  let reminders = null
 
   const plugin = {
     id: 'signalk-write-ais-nmea0183',
@@ -22,6 +29,24 @@ module.exports = function (app) {
       description: `Installed plugin version: ${version}`,
       required: ['providerId', 'regionalFlags'],
       properties: {
+        enableVoyageReminders: {
+          type: 'boolean', title: 'Enable departure and arrival reminders', default: false,
+          description: 'Visual Signal K checklist notifications from the configured navigation.state source. Does not send AIS commands.'
+        },
+        reminderDelaySeconds: {
+          type: 'integer', title: 'Reminder state stability delay (seconds)',
+          default: 60, minimum: 1, maximum: 3600
+        },
+        navigationStateMode: {
+          type: 'string', title: 'Use Signal K navigation.state',
+          enum: ['manual', 'on-send', 'automatic'], default: 'manual',
+          description: 'Manual: webapp selector. On-send: source-filtered navigation.state supplies status on Send. Automatic: also send status-only VSD on eligible state changes; other voyage fields stay unchanged.'
+        },
+        navigationStateSource: {
+          type: 'string', title: 'navigation.state source label',
+          default: 'signalk-autostate',
+          description: 'Only updates from this exact source label or $source are used. AIS/VDO and this plugin are excluded.'
+        },
         providerId: {
           type: 'string',
           title: 'Data Connection ID',
@@ -66,7 +91,17 @@ module.exports = function (app) {
             receiveEvent.endsWith('-toStdout')) {
           throw new RequestError('Input event must start with ais-voyage- and be different from the serial output event.')
         }
-        settings = { providerId: options.providerId, regionalFlags: options.regionalFlags, outputEvent, inputEvent: receiveEvent }
+        const navigationStateMode = options.navigationStateMode ?? 'manual'
+        const navigationStateSource = options.navigationStateSource ?? 'signalk-autostate'
+        const enableVoyageReminders = options.enableVoyageReminders ?? false
+        if (typeof enableVoyageReminders !== 'boolean') throw new RequestError('Enable voyage reminders must be a boolean.')
+        const reminderDelaySeconds = integer(options.reminderDelaySeconds ?? 60, 1, 3600, 'Reminder delay')
+        if (!['manual', 'on-send', 'automatic'].includes(navigationStateMode) ||
+            typeof navigationStateSource !== 'string' || !navigationStateSource.trim() ||
+            /ais|vdo/i.test(navigationStateSource) || navigationStateSource === plugin.id) {
+          throw new RequestError('Choose a valid navigation.state mode and a non-AIS source label.')
+        }
+        settings = { providerId: options.providerId, regionalFlags: options.regionalFlags, outputEvent, inputEvent: receiveEvent, navigationStateMode, navigationStateSource }
         inputEvent = receiveEvent
         app.on(inputEvent, receiveSentence)
         unsubscribe = app.onPropertyValues('serialport', history => {
@@ -79,6 +114,29 @@ module.exports = function (app) {
           }
         })
         running = true
+        if (enableVoyageReminders) {
+          reminders = new Reminders((path, value) => {
+            try {
+              app.handleMessage(plugin.id, {
+                context: `vessels.${app.selfId}`,
+                updates: [{ source: { label: plugin.id }, timestamp: new Date().toISOString(), values: [{ path, value }] }]
+              })
+              return true
+            } catch (error) {
+              app.setPluginError(`Voyage reminder: ${error.message}`)
+              app.error(`Voyage reminder: ${error.message}`)
+              return false
+            }
+          }, reminderDelaySeconds * 1000)
+        }
+        if (navigationStateMode !== 'manual' || enableVoyageReminders) {
+          app.subscriptionmanager.subscribe({
+            context: 'vessels.self', subscribe: [{ path: 'navigation.state', period: 0 }]
+          }, stateUnsubscribes, error => {
+            app.setPluginError(`navigation.state subscription: ${error}`)
+            app.error(`navigation.state subscription: ${error}`)
+          }, receiveNavigationState)
+        }
         app.setPluginStatus('Ready for manual voyage submissions; AIS acceptance must be checked on its display.')
       } catch (error) {
         plugin.stop()
@@ -89,6 +147,13 @@ module.exports = function (app) {
     },
     stop() {
       running = false
+      if (reminders) reminders.stop()
+      reminders = null
+      stateUnsubscribes.forEach(unsubscribe => unsubscribe())
+      stateUnsubscribes = []
+      navigationState = null
+      lastAutomaticStatus = null
+      lastStatusSubmission = null
       if (inputEvent) app.removeListener(inputEvent, receiveSentence)
       inputEvent = null
       if (unsubscribe) unsubscribe()
@@ -105,20 +170,29 @@ module.exports = function (app) {
         res.set('Cache-Control', 'no-store').json({
           running, version, vessel: vesselDetails(app), navigationStatuses: NAV_STATUSES,
           connection, regionalFlags: settings?.regionalFlags ?? null, lastSubmission,
-          diagnostics: diagnostics()
+          diagnostics: diagnostics(),
+          signalKDefaults: signalKDefaults(app),
+          reminder: reminders?.active ?? null,
+          navigationState: { mode: settings?.navigationStateMode ?? 'manual', source: settings?.navigationStateSource ?? null, current: navigationState, lastSubmission: lastStatusSubmission }
         })
+      }))
+      router.post('/reminders/clear', handle((req, res) => {
+        requireRunning()
+        requireSameOrigin(req)
+        if (reminders && !reminders.clear()) throw new RequestError('Could not clear reminder; check server logs.', 503)
+        res.set('Cache-Control', 'no-store').json({ message: 'Checklist reminder cleared. No AIS command sent.' })
       }))
       router.post('/preview', handle((req, res) => {
         requireRunning()
         requireSameOrigin(req)
         res.set('Cache-Control', 'no-store').json(
-          buildVoyage(req.body, vesselDetails(app), settings.regionalFlags)
+          buildVoyage(voyageInput(req.body), vesselDetails(app), settings.regionalFlags)
         )
       }))
       router.post('/voyage', handle((req, res) => {
         requireRunning()
         requireSameOrigin(req)
-        const voyage = buildVoyage(req.body, vesselDetails(app), settings.regionalFlags)
+        const voyage = buildVoyage(voyageInput(req.body), vesselDetails(app), settings.regionalFlags)
         const confirmed = voyage.inlandPersonnel
           ? JSON.stringify(req.body.confirmedSentences) === JSON.stringify(voyage.sentences)
           : req.body.confirmedSentence === voyage.sentence
@@ -154,6 +228,56 @@ module.exports = function (app) {
           message: 'Submitted to Signal K serial output. Not an AIS acknowledgement: verify Voyage Data on the AIS display.'
         })
       }))
+    }
+  }
+
+  function voyageInput(input) {
+    if (settings.navigationStateMode === 'manual') return input
+    if (!navigationState) throw new RequestError('Waiting for supported navigation.state from the configured source.', 422)
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return input
+    return { ...input, navigationStatus: navigationState.status }
+  }
+
+  function receiveNavigationState(delta) {
+    if (!running || (delta.context && delta.context !== 'vessels.self' &&
+        delta.context !== `vessels.${app.selfId}`)) return
+    for (const update of delta.updates || []) {
+      const source = update.source?.label || update.$source
+      if (source !== settings.navigationStateSource) continue
+      for (const value of update.values || []) {
+        if (value.path !== 'navigation.state') continue
+        if (navigationState?.timestamp && update.timestamp &&
+            update.timestamp < navigationState.timestamp) continue
+        const status = stateStatus(value.value)
+        if (status === null) {
+          reminders?.cancelPending()
+          navigationState = null
+          app.setPluginError(`Unsupported navigation.state: ${String(value.value)}`)
+          app.error(`Unsupported navigation.state: ${String(value.value)}`)
+          continue
+        }
+        navigationState = { value: value.value, status, source, timestamp: update.timestamp ?? null }
+        reminders?.observe(status)
+        if (settings.navigationStateMode !== 'automatic' || status === lastAutomaticStatus) continue
+        try {
+          const connection = outputConnection()
+          if (!connection.available) throw new RequestError('AIS serial output unavailable for automatic status update.')
+          if (readback.navigation?.navigationStatus === status) {
+            lastAutomaticStatus = status
+            continue
+          }
+          const sentence = statusSentence(status)
+          if (!app.emit(connection.event, sentence)) throw new RequestError('No serial listener accepted automatic status update.')
+          lastAutomaticStatus = status
+          lastStatusSubmission = { sentence, status, source, submittedAt: new Date().toISOString() }
+          console.log(`${plugin.id} TX status-only ${lastStatusSubmission.submittedAt} ${connection.event} ${sentence}`)
+          app.setPluginStatus('Automatic status submitted; verify AIS acceptance. Other voyage fields unchanged.')
+        } catch (error) {
+          lastAutomaticStatus = status
+          app.setPluginError(error.message)
+          app.error(error.message)
+        }
+      }
     }
   }
 

@@ -21,6 +21,35 @@ and npm registry processing can take time.
 
 Run these commands on your development computer, not on the Ekrano.
 
+### Script shortcut
+
+[publish_to_npm.sh](publish_to_npm.sh) automates local validation, committing
+staged changes, pushing `main`, waiting for CI on the exact commit, tagging,
+waiting for automated publication and checking npm availability.
+
+First prepare the version, changelog and documentation as described below.
+Stage all intended changes explicitly (including this script when first
+committing it). The script refuses unstaged changes or untracked files so it
+cannot accidentally publish unrelated work.
+
+```sh
+# Review and stage your release changes first.
+git status --short
+git add <intended-files>
+./publish_to_npm.sh --dry-run
+./publish_to_npm.sh
+```
+
+`--dry-run` runs checks, installation, tests and package validation, but does not
+commit, push, tag or publish. The normal run asks for confirmation. It does not
+bump the version, modify the changelog, run local `npm publish`, or create a
+GitHub Release. GitHub authentication (`gh auth login`) is required; local npm
+login is not needed for this existing package.
+
+If a tag has already been created and publication fails, inspect/retry the
+GitHub workflow using the troubleshooting instructions below rather than
+rerunning the script. Do not move tags or reuse published versions.
+
 ### 1. Prepare the release
 
 Start on `main` with your intended changes committed and a clean worktree:

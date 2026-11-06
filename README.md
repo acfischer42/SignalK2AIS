@@ -26,12 +26,12 @@ npm run check
 npm pack
 ```
 
-Copy the resulting `signalk-write-ais-nmea0183-0.1.13.tgz` to your GX. In the
+Copy the resulting `signalk-write-ais-nmea0183-0.1.14.tgz` to your GX. In the
 **Signal K configuration directory** (the directory containing its `settings.json`
 and `node_modules`, not necessarily `/data`), run:
 
 ```sh
-npm install /path/to/signalk-write-ais-nmea0183-0.1.13.tgz
+npm install /path/to/signalk-write-ais-nmea0183-0.1.14.tgz
 ```
 
 Restart Signal K. Under **Server -> Plugin Config -> SignalK2AIS**, configure:
@@ -208,6 +208,73 @@ Keep the existing Venus OS `serial-starter` ignore rule.
 
 ## Vessel data and voyage fields
 
+### Departure and arrival reminders
+
+Enable **Enable departure and arrival reminders** in Plugin Config (off by
+default). Reminders use the configured `navigation.state` source, defaulting to
+`signalk-autostate`, independently of the AIS status mode: they also work in
+manual mode without sending any AIS commands.
+
+The first supported state establishes a baseline without notifying. A transition
+between stopped (moored/anchored) and moving (motoring/sailing) must remain stable
+for **Reminder state stability delay**, default 60 seconds. Repeated state
+reports do not restart that timer; reversals and unsupported states cancel it.
+Switching between motoring and sailing does not generate another departure.
+
+A visual `alert` is published at `notifications.aisVoyage.checklist`, asking you
+to check destination, ETA and persons on departure or review voyage data on
+arrival. The message includes `/signalk-write-ais-nmea0183/`; an optional `href`
+field provides the same relative link. Clickable links depend on the receiving
+client; clients that only display plain text may require opening the app manually.
+No sound or phone push routing is configured.
+
+The app shows an active reminder and a **Checklist reviewed** button. This clears
+the notification with a null delta and does not send an AIS command. Sending
+voyage data does not dismiss the checklist. A new transition replaces the previous
+reminder. Stopping/disabling/reconfiguring the plugin clears its active reminder
+and cancels pending timers. Restarting establishes a fresh baseline.
+Missing-readback warnings are not included in this feature.
+
+### Signal K voyage fallback and Auto-state integration
+
+When no own-vessel message 5 has arrived since restart, the form can use
+`navigation.destination.commonName` and `navigation.destination.eta` from Signal K.
+Direct AIS voyage readback takes precedence when available at initial fill.
+Fields are filled once; user edits are never overwritten. Signal K values may
+be stale: check the form before sending. No requested voyage value is published
+as if confirmed: the existing Signal K VDO parser continues to publish actual
+AIS readback. This plugin adds no duplicate Signal K publisher.
+
+**Use Signal K navigation.state** in Plugin Config has three modes:
+
+- `manual` (default): choose status in the webapp, preserving existing behavior.
+- `on-send`: use the latest supported `navigation.state` from the configured
+  source when pressing Send; the status selector is locked.
+- `automatic`: also submit a status-only VSD when that source reports a changed
+  status. It can submit immediately on the first eligible report after startup.
+  Destination, ETA, ship type, draught, persons and regional flags are null wire
+  fields meaning unchanged, not unavailable. No PIWWIVD is sent automatically.
+  **Verify your AIS firmware accepts this partial VSD before relying on it.**
+
+The source label defaults to `signalk-autostate`, matching
+[`@meri-imperiumi/signalk-autostate`](https://github.com/meri-imperiumi/signalk-autostate).
+That plugin emits `motoring` (AIS 0), `anchored` (1), `moored` (5) or `sailing`
+(8). Set its default propulsion appropriately for your vessel. Only the exact
+configured `source.label` (or `$source` when there is no label) is accepted.
+Other vessels, AIS/VDO sources and this plugin's own source are excluded; an
+unsupported value reports an error and blocks on-send use until a supported
+value arrives. The plugin waits for a source update instead of assuming that
+the current global datapoint came from Auto-state.
+
+Repeated identical status reports do not retransmit, including Auto-state's
+periodic refreshes. If the last own-vessel status already matches, no automatic
+command is needed. A failed submission is logged and shown as a plugin error,
+without automatic retry of the same state (check hardware before restarting
+or changing modes). Subscription handlers are removed on stop/reconfiguration.
+Last automatic submission is shown in diagnostics separately from full voyage
+submissions; neither is proof of AIS acceptance. Automatic mode does not change
+the full voyage submission or comparison history.
+
 The webapp refreshes read-only vessel data every 10 seconds, and the backend reads
 it again for both preview and submission:
 
@@ -353,7 +420,7 @@ The expanded section displays:
 The voyage form itself is prefilled from the latest received AIS readback where
 available (destination, ETA, status and Inland personnel counts). This allows
 editing only the fields that need changes, then sending. Prefill uses
-received reports only (not Signal K vessel data), and never overwrites fields
+received reports with Signal K destination/ETA fallback, and never overwrites fields
 after manual edits.
 
 Raw encoded RX payloads are omitted from the webapp, including receive error

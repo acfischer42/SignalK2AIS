@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.14
+
+- Add opt-in visual departure/arrival checklist reminders with a webapp link and review button.
+- Add manual, on-send and automatic navigation.state modes with Auto-state source filtering.
+- Send status-only VSD automatically without replacing other voyage settings.
+- Use existing Signal K destination/ETA as form fallback before AIS voyage readback arrives.
+- Show automatic status submissions separately in diagnostics; never publish requested settings as confirmed data.
+
 ## 0.1.13
 
 - Publish releases through GitHub Actions with npm trusted publishing and provenance.

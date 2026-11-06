@@ -18,6 +18,11 @@
       <p id="plugin-version" class="hint">Running plugin version: loading...</p>
       <p>Set your destination, arrival time and navigational status.</p></header>
     <p id="connection" role="status">Loading Signal K data...</p>
+    <section id="voyage-reminder" hidden aria-labelledby="reminder-heading">
+      <h2 id="reminder-heading">Voyage checklist reminder</h2>
+      <p id="reminder-message"></p>
+      <button id="reviewed-button" type="button" class="secondary">Checklist reviewed</button>
+    </section>
     <section aria-labelledby="vessel-heading">
       <h2 id="vessel-heading">Vessel details <small>Read-only from Signal K</small></h2>
       <dl class="details">
@@ -31,7 +36,7 @@
     </section>
     <form id="voyage-form">
       <h2>Voyage details</h2>
-      <p class="hint">Fields are prefilled from the latest AIS readback when available and are not overwritten after you edit them.</p>
+      <p class="hint">Fields are prefilled from the latest AIS readback, or existing Signal K destination/ETA if no voyage report is available. Your edits are preserved.</p>
       <label for="destination">Destination</label>
       <input id="destination" name="destination" type="text" maxlength="20"
         autocomplete="off" placeholder="e.g. VIENNA" aria-describedby="destination-hint">
@@ -43,6 +48,7 @@
       <select id="navigation-status" name="navigationStatus" required>
         <option value="">Choose the current status</option>
       </select>
+      <p id="navigation-state-hint" class="hint">Choose the current AIS navigational status.</p>
       <label for="personnel-mode">Personnel mode</label>
       <select id="personnel-mode">
         <option value="maritime">Maritime — one persons-on-board total (VSD)</option>
@@ -78,6 +84,7 @@
       <summary>AIS diagnostics</summary>
       <p id="readback-status" role="status" aria-live="polite">Loading diagnostics...</p>
       <p id="readback-source" class="hint"></p>
+      <p id="automatic-status-tx" class="hint"></p>
       <h3>Last TX <small>Submitted to Signal K serial output</small></h3>
       <p id="tx-time" class="hint">No submission yet.</p>
       <pre id="tx-sentence">No outgoing sentence yet.</pre>

@@ -170,6 +170,20 @@ test('API failure surfaces diagnostics warning without readback-specific section
   assert.match(f.text('message'), /Server unreachable/)
 })
 
+test('Signal K fallback fills form only without voyage readback and managed state locks selector', async () => {
+  const f = await fixture()
+  f.data.signalKDefaults = { destination: 'BRYC', eta: '2026-11-06T08:00:00.000Z' }
+  f.data.navigationState = { mode: 'on-send', source: 'signalk-autostate', current: { status: 5, value: 'moored' } }
+  await f.refresh()
+  assert.equal(f.value('destination'), 'BRYC')
+  assert.equal(new Date(f.value('eta')).toISOString(), '2026-11-06T08:00:00.000Z')
+  assert.equal(f.value('navigation-status'), '5')
+  assert.match(f.text('navigation-state-hint'), /signalk-autostate/)
+  f.data.navigationState.current = null
+  await f.refresh()
+  assert.equal(f.disabled(), true)
+})
+
 test('one form submission validates and sends the current readback without a confirmation step', async () => {
   const f = await fixture({
     voyage, navigation: { navigationStatus: 5 },

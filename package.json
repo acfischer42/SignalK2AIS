@@ -1,6 +1,6 @@
 {
   "name": "signalk-write-ais-nmea0183",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Set AIS voyage data through an existing Signal K serial connection.",
   "author": "acfischer42",
   "license": "MIT",
@@ -42,6 +42,6 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check index.js && node --check lib/voyage.js && node --check lib/readback.js && node --check public/app.js"
+    "check": "node --check index.js && node --check lib/voyage.js && node --check lib/readback.js && node --check lib/navigation.js && node --check lib/reminders.js && node --check public/app.js"
   }
 }
