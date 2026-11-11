@@ -26,12 +26,12 @@ npm run check
 npm pack
 ```
 
-Copy the resulting `signalk-write-ais-nmea0183-0.1.14.tgz` to your GX. In the
+Copy the resulting `signalk-write-ais-nmea0183-0.1.15.tgz` to your GX. In the
 **Signal K configuration directory** (the directory containing its `settings.json`
 and `node_modules`, not necessarily `/data`), run:
 
 ```sh
-npm install /path/to/signalk-write-ais-nmea0183-0.1.14.tgz
+npm install /path/to/signalk-write-ais-nmea0183-0.1.15.tgz
 ```
 
 Restart Signal K. Under **Server -> Plugin Config -> SignalK2AIS**, configure:
@@ -67,6 +67,23 @@ lookups; tests ensure it matches the public copy.
 Use an administrator login in the Signal K admin UI on the **same origin** first.
 The server's plugin router provides authentication; do not expose write access
 on an unsecured/public Signal K instance.
+
+## Freeboard toolbar button
+
+On servers with the resource-provider API, the configured, running plugin
+provides a `plotterExtensions` manifest. In a compatible Freeboard version,
+open the toolbar using the top-right grid icon, then select the dedicated
+SignalK2AIS boat button. On small screens, check the toolbar's overflow menu.
+This is separate from
+Display -> Favourite Apps and the Instruments app.
+
+The button opens the existing voyage form inside Freeboard. Closing and
+reopening the panel preserves edits; only **Send to AIS** submits a manual
+voyage update. Existing automatic navigation-state settings still apply.
+The panel uses a condensed layout with collapsed vessel details and personnel
+counts on one row. **Show field help** reveals the full entry guidance.
+The standalone page retains its full layout; `?compact=1` selects the panel layout.
+The standalone webapp remains available on older servers/Freeboard versions.
 
 ## CI and npm releases
 
@@ -478,9 +495,13 @@ verify persons on board, regional flags, ETA year or ETA seconds; these are
 explicitly excluded from comparison. Readback does not overwrite the form or
 the Signal K data model.
 
-Full submitted TX sentences and valid related RX fragments are written to the
-**Signal K server log** with timestamps and event names, without needing debug
-logging enabled. Invalid AIVDO/PIWWIVD input is logged as an error and shown in the panel.
+Full submitted TX sentences are written to the **Signal K server log** with
+timestamps and event names, without needing debug logging enabled. Routine RX
+sentence logging is off by default. To troubleshoot reception, enable **Log
+received AIS sentences** (`logReceivedSentences`) in Plugin Config; this writes
+every valid related raw RX fragment and can produce frequent log messages.
+Disabling it does not affect readback processing or in-memory diagnostics.
+Invalid AIVDO/PIWWIVD input is always logged as an error and shown in the panel.
 No log file is created by the plugin: retention is controlled by the Signal K/GX
 logging configuration. In-memory TX/RX diagnostics reset when the plugin stops,
 its configuration changes, or the server restarts.

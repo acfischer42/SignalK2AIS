@@ -1,6 +1,6 @@
 {
   "name": "signalk-write-ais-nmea0183",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Set AIS voyage data through an existing Signal K serial connection.",
   "author": "acfischer42",
   "license": "MIT",
@@ -30,7 +30,9 @@
   "signalk": {
     "displayName": "SignalK2AIS",
     "appIcon": "./icon.svg",
-    "screenshots": ["./screenshot.png"]
+    "screenshots": [
+      "./screenshot.png"
+    ]
   },
   "files": [
     "index.js",

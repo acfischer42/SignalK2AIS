@@ -64,6 +64,10 @@ module.exports = function (app) {
           description: 'Leave empty for discovery. On older servers set ais-voyage-out here and as toStdout on the AIS connection only.',
           default: '', pattern: '^$|^ais-voyage-[A-Za-z0-9_-]+$'
         },
+        logReceivedSentences: {
+          type: 'boolean', title: 'Log received AIS sentences', default: false,
+          description: 'Write every related raw AIS receive fragment to the server log for troubleshooting. Readback and error reporting remain active when disabled.'
+        },
         inputEvent: {
           type: 'string', title: 'AIS input sentence event',
           description: 'Set this event as sentenceEvent on the AIS connection only. Never use global nmea0183 for readback.',
@@ -96,6 +100,8 @@ module.exports = function (app) {
             receiveEvent.endsWith('-toStdout')) {
           throw new RequestError('Input event must start with ais-voyage- and be different from the serial output event.')
         }
+        const logReceivedSentences = options.logReceivedSentences ?? false
+        if (typeof logReceivedSentences !== 'boolean') throw new RequestError('Log received AIS sentences must be a boolean.')
         const navigationStateMode = options.navigationStateMode ?? 'manual'
         const navigationStateSource = options.navigationStateSource ?? 'signalk-autostate'
         const enableVoyageReminders = options.enableVoyageReminders ?? false
@@ -106,7 +112,7 @@ module.exports = function (app) {
             /ais|vdo/i.test(navigationStateSource) || navigationStateSource === plugin.id) {
           throw new RequestError('Choose a valid navigation.state mode and a non-AIS source label.')
         }
-        settings = { providerId: options.providerId, regionalFlags: options.regionalFlags, outputEvent, inputEvent: receiveEvent, navigationStateMode, navigationStateSource }
+        settings = { providerId: options.providerId, regionalFlags: options.regionalFlags, outputEvent, inputEvent: receiveEvent, navigationStateMode, navigationStateSource, logReceivedSentences }
         inputEvent = receiveEvent
         app.on(inputEvent, receiveSentence)
         unsubscribe = app.onPropertyValues('serialport', history => {
@@ -119,6 +125,43 @@ module.exports = function (app) {
           }
         })
         running = true
+        if (typeof app.registerResourceProvider === 'function') {
+          const manifest = () => ({
+            name: plugin.name,
+            description: 'Review and send AIS voyage data without leaving the chart.',
+            version,
+            apiVersion: '1',
+            requires: ['panels.iframe', 'buttons'],
+            panels: [{
+              id: 'voyage',
+              title: plugin.name,
+              type: 'iframe',
+              url: `/${plugin.id}/?compact=1`,
+              lifecycle: 'keepAlive'
+            }],
+            buttons: [{
+              id: 'open-voyage',
+              title: plugin.name,
+              slot: 'mapToolbar',
+              icon: 'directions_boat',
+              action: { type: 'togglePanel', panel: 'voyage' }
+            }]
+          })
+          app.registerResourceProvider({
+            type: 'plotterExtensions',
+            methods: {
+              listResources: async () => running ? { [plugin.id]: manifest() } : {},
+              getResource: async id => {
+                if (!running || id !== plugin.id) {
+                  throw new Error(`No such plotterExtensions resource: ${id}`)
+                }
+                return manifest()
+              },
+              setResource: async () => { throw new Error('SignalK2AIS plotter extension is read-only') },
+              deleteResource: async () => { throw new Error('SignalK2AIS plotter extension is read-only') }
+            }
+          })
+        }
         if (enableVoyageReminders) {
           reminders = new Reminders((path, value) => {
             try {
@@ -290,7 +333,7 @@ module.exports = function (app) {
     if (!running) return
     try {
       const result = readback.receive(sentence)
-      if (result) {
+      if (result && settings.logReceivedSentences) {
         console.log(`${plugin.id} RX ${readback.lastRx.receivedAt} ${inputEvent} ${result.sentence}`)
       }
     } catch (error) {

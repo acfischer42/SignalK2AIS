@@ -11,7 +11,8 @@ const { version, signalk } = require('../package.json')
 const html = readFileSync(join(__dirname, '../public/index.html'), 'utf8')
 const script = readFileSync(join(__dirname, '../public/app.js'), 'utf8')
 
-async function fixture(diagnostics = {}) {
+async function fixture(diagnostics = {}, compact = false) {
+  const classes = new Set()
   const listeners = new Map()
   const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
     textContent: '', value: '', dataset: {}, options: [{}],
@@ -19,7 +20,8 @@ async function fixture(diagnostics = {}) {
     add(option) { this.options.push(option) },
     replaceChildren() {},
     reportValidity() { return true },
-    append() {}
+    append() {},
+    setAttribute(name, value) { this[name] = value }
   }]))
   const data = {
     version, running: true, regionalFlags: 0,
@@ -43,13 +45,19 @@ async function fixture(diagnostics = {}) {
     },
     Option: function (name, value) { this.name = name; this.value = value },
     document: {
+      documentElement: { classList: { toggle(name, force) {
+        const enabled = force ?? !classes.has(name)
+        if (enabled) classes.add(name)
+        else classes.delete(name)
+        return enabled
+      } } },
       getElementById(id) {
         assert.ok(elements.has(id), `Missing HTML element: ${id}`)
         return elements.get(id)
       }
     },
     window: {
-      location: { href: 'http://localhost:3000/signalk-write-ais-nmea0183/' },
+      location: { href: `http://localhost:3000/signalk-write-ais-nmea0183/${compact ? '?compact=1' : ''}` },
       setInterval() {},
       addEventListener() {}
     },
@@ -77,6 +85,9 @@ async function fixture(diagnostics = {}) {
   elements.get('personnel-mode').value = 'inland'
   return {
     data,
+    classes,
+    open: id => elements.get(id).open,
+    click: id => listeners.get(`${id}:click`)(),
     posts,
     submit: () => listeners.get('voyage-form:submit')({ preventDefault() {} }),
     beforeValidation: callback => { beforeValidation = callback },
@@ -98,6 +109,21 @@ const voyage = {
   eta: { month: 11, day: 4, hour: 0, minute: 5 },
   mmsi: '205682570', receivedAt: '2026-11-04T07:00:00.000Z'
 }
+
+test('compact panel collapses vessel details and exposes optional field help without submitting', async () => {
+  const regular = await fixture()
+  assert.equal(regular.classes.has('compact'), false)
+  assert.equal(regular.open('vessel-details'), true)
+  const panel = await fixture({}, true)
+  assert.equal(panel.classes.has('compact'), true)
+  assert.equal(panel.open('vessel-details'), false)
+  panel.click('toggle-help')
+  assert.equal(panel.classes.has('show-help'), true)
+  assert.equal(panel.text('toggle-help'), 'Hide field help')
+  panel.click('toggle-help')
+  assert.equal(panel.classes.has('show-help'), false)
+  assert.equal(panel.posts.length, 0)
+})
 
 test('page is branded SignalK2AIS without the old eyebrow', async () => {
   assert.match(html, /<title>SignalK2AIS<\/title>/)

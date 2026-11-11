@@ -2,6 +2,14 @@
 
 const base = new URL('../plugins/signalk-write-ais-nmea0183/', window.location.href)
 const element = id => document.getElementById(id)
+const compact = new URL(window.location.href).searchParams.get('compact') === '1'
+document.documentElement.classList.toggle('compact', compact)
+element('vessel-details').open = !compact
+element('toggle-help').addEventListener('click', () => {
+  const expanded = document.documentElement.classList.toggle('show-help')
+  element('toggle-help').setAttribute('aria-expanded', String(expanded))
+  element('toggle-help').textContent = expanded ? 'Hide field help' : 'Show field help'
+})
 const form = element('voyage-form')
 let state
 let busy = false

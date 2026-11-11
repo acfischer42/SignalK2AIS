@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.15
+
+- Make per-sentence RX server logging opt-in, off by default; retain readback processing, diagnostics, TX logging and receive errors.
+- Condense the Freeboard voyage panel with inline personnel counts, collapsed vessel details and optional field help.
+- Add a dedicated SignalK2AIS plotter-extension toolbar button and persistent voyage panel for compatible Freeboard versions.
+- Keep empty startup configuration visibly unconfigured with AIS writes disabled.
+- Include an App Store screenshot using fictional demonstration values.
+
 ## 0.1.14
 
 - Add opt-in visual departure/arrival checklist reminders with a webapp link and review button.

@@ -71,6 +71,52 @@ const input = {
   navigationStatus: 5, personsOnBoard: 3
 }
 
+test('plotter extension provides a dedicated read-only toolbar panel only while running', async () => {
+  const f = fixture()
+  const providers = []
+  f.app.registerResourceProvider = provider => providers.push(provider)
+  f.app.on('serial-ais-toStdout', () => assert.fail('Opening the extension must not send AIS commands'))
+  f.plugin.start({})
+  assert.equal(providers.length, 0)
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0 })
+  assert.equal(providers.length, 1)
+  assert.equal(providers[0].type, 'plotterExtensions')
+  const methods = providers[0].methods
+  const manifest = await methods.getResource(f.plugin.id)
+  assert.equal(manifest.name, 'SignalK2AIS')
+  assert.equal(manifest.version, version)
+  assert.equal(manifest.apiVersion, '1')
+  assert.deepEqual(manifest.requires, ['panels.iframe', 'buttons'])
+  assert.deepEqual(manifest.panels, [{
+    id: 'voyage', title: 'SignalK2AIS', type: 'iframe',
+    url: '/signalk-write-ais-nmea0183/?compact=1', lifecycle: 'keepAlive'
+  }])
+  assert.deepEqual(manifest.buttons, [{
+    id: 'open-voyage', title: 'SignalK2AIS', slot: 'mapToolbar',
+    icon: 'directions_boat', action: { type: 'togglePanel', panel: 'voyage' }
+  }])
+  assert.deepEqual(await methods.listResources(), { [f.plugin.id]: manifest })
+  await assert.rejects(methods.getResource('other'), /No such/)
+  await assert.rejects(methods.setResource(f.plugin.id, {}), /read-only/)
+  await assert.rejects(methods.deleteResource(f.plugin.id), /read-only/)
+  f.plugin.stop()
+  assert.deepEqual(await methods.listResources(), {})
+  await assert.rejects(methods.getResource(f.plugin.id), /No such/)
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0 })
+  assert.deepEqual(await providers.at(-1).methods.listResources(), { [f.plugin.id]: manifest })
+  f.plugin.start({})
+  assert.deepEqual(await providers.at(-1).methods.listResources(), {})
+})
+
+test('plotter extension registration errors fail startup explicitly and clean up', () => {
+  const f = fixture()
+  f.app.registerResourceProvider = () => { throw new Error('Resource registration failed') }
+  assert.throws(() => f.plugin.start({ providerId: 'ais', regionalFlags: 0 }), /Resource registration failed/)
+  assert.equal(f.isSubscribed(), false)
+  assert.equal(f.request('GET', '/state').body.running, false)
+  assert.ok(f.errors.includes('Resource registration failed'))
+})
+
 test('reminders work in manual mode, ignore AIS, clear through protected API and never send commands', async () => {
   const f = fixture()
   const published = []
@@ -370,11 +416,11 @@ test('configuration rejects global or colliding RX events', () => {
   }
 })
 
-test('server logging includes full submitted sentence and every related raw receive fragment', t => {
+test('server logging includes full submitted sentence and opted-in raw receive fragments', t => {
   const log = t.mock.method(console, 'log', () => {})
   const f = fixture()
   f.app.on('serial-ais-toStdout', () => {})
-  f.plugin.start({ providerId: 'ais', regionalFlags: 0 })
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences: true })
   const preview = f.request('POST', '/preview', input).body
   f.request('POST', '/voyage', { ...input, confirmedSentence: preview.sentence })
   const incoming = reports()
@@ -383,6 +429,48 @@ test('server logging includes full submitted sentence and every related raw rece
   assert.ok(logs.some(line => line.includes('TX submitted') && line.endsWith(preview.sentence)))
   for (const raw of [...incoming.voyage, incoming.navigation]) {
     assert.ok(logs.some(line => /RX \d{4}-\d{2}-\d{2}T/.test(line) && line.endsWith(raw)))
+  }
+})
+
+test('RX logging defaults off without disabling readback, TX logs, or receive errors', t => {
+  const log = t.mock.method(console, 'log', () => {})
+  const f = fixture()
+  assert.equal(f.plugin.schema().properties.logReceivedSentences.default, false)
+  f.app.on('serial-ais-toStdout', () => {})
+  for (const options of [{}, { logReceivedSentences: false }]) {
+    f.plugin.start({ providerId: 'ais', regionalFlags: 0, ...options })
+    const preview = f.request('POST', '/preview', input).body
+    assert.equal(f.request('POST', '/voyage', { ...input, confirmedSentence: preview.sentence }).status, 202)
+    const incoming = reports()
+    for (const raw of [...incoming.voyage, incoming.navigation]) f.app.emit('ais-voyage-in', raw)
+    const diagnostics = f.request('GET', '/state').body.diagnostics
+    assert.deepEqual(diagnostics.voyage.sentences, incoming.voyage)
+    assert.equal(diagnostics.lastRx.sentence, incoming.navigation)
+    f.app.emit('ais-voyage-in', '!AIVDO,bad')
+    assert.ok(f.errors.some(error => error.includes('AIS readback:')))
+  }
+  const logs = log.mock.calls.map(call => call.arguments[0])
+  assert.ok(logs.some(line => line.includes('TX submitted')))
+  assert.ok(logs.every(line => !line.includes(' RX ')))
+})
+
+test('RX logging can be disabled again on configuration restart', t => {
+  const log = t.mock.method(console, 'log', () => {})
+  const f = fixture()
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences: true })
+  f.app.emit('ais-voyage-in', reports().navigation)
+  assert.equal(log.mock.callCount(), 1)
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences: false })
+  f.app.emit('ais-voyage-in', reports().navigation)
+  assert.equal(log.mock.callCount(), 1)
+  assert.equal(f.request('GET', '/state').body.diagnostics.lastRx.sentence, reports().navigation)
+})
+
+test('RX logging rejects non-boolean configuration', () => {
+  for (const logReceivedSentences of ['false', 0, 1, {}]) {
+    const f = fixture()
+    assert.throws(() => f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences }), /must be a boolean/)
+    assert.equal(f.app.listenerCount('ais-voyage-in'), 0)
   }
 })
 

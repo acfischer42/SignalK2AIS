@@ -23,8 +23,9 @@
       <p id="reminder-message"></p>
       <button id="reviewed-button" type="button" class="secondary">Checklist reviewed</button>
     </section>
-    <section aria-labelledby="vessel-heading">
-      <h2 id="vessel-heading">Vessel details <small>Read-only from Signal K</small></h2>
+    <details id="vessel-details" open>
+      <summary id="vessel-heading">Vessel details</summary>
+      <p class="hint">Read-only from Signal K</p>
       <dl class="details">
         <div><dt>Ship type</dt><dd id="ship-type">Unavailable</dd></div>
         <div><dt>Beam</dt><dd id="beam">Unavailable</dd></div>
@@ -33,7 +34,7 @@
       </dl>
       <p class="hint">Ship type and maximum draught are included in every voyage command.
         Beam and length are displayed only; AIS identity and dimensions are not changed.</p>
-    </section>
+    </details>
     <form id="voyage-form">
       <h2>Voyage details</h2>
       <p class="hint">Fields are prefilled from the latest AIS readback, or existing Signal K destination/ETA if no voyage report is available. Your edits are preserved.</p>
@@ -61,20 +62,24 @@
       </div>
       <fieldset id="inland-personnel">
         <legend>Inland personnel</legend>
-        <label for="crew">Crew</label>
-        <input id="crew" type="number" min="0" max="254" step="1">
-        <label for="passengers">Passengers</label>
-        <input id="passengers" type="number" min="0" max="8190" step="1">
-        <label for="other-personnel">Other personnel</label>
-        <input id="other-personnel" type="number" min="0" max="254" step="1">
+        <div class="personnel-fields">
+          <div><label for="crew">Crew</label>
+            <input id="crew" type="number" min="0" max="254" step="1"></div>
+          <div><label for="passengers">Passengers</label>
+            <input id="passengers" type="number" min="0" max="8190" step="1"></div>
+          <div><label for="other-personnel">Other personnel</label>
+            <input id="other-personnel" type="number" min="0" max="254" step="1"></div>
+        </div>
         <p class="hint">Blank clears that count to unknown; zero explicitly means none. Sends PIWWIVD fields 7–9;
           other Inland settings are left unchanged. VSD receives the computed total
           (8191 = unavailable if the total exceeds 8190).</p>
       </fieldset>
-      <p class="warning">This is a real AIS update. Every submission replaces the complete VSD voyage data,
+      <p class="warning"><span class="full-warning">This is a real AIS update. Every submission replaces the complete VSD voyage data,
         including ship type, draught, persons, ETA and navigational status.
-        Blank fields clear values to not available; they do not preserve existing values.</p>
+        Blank fields clear values to not available; they do not preserve existing values.</span>
+        <span class="compact-only">Replaces voyage data. Blanks clear values; zero means none. Verify on the AIS display.</span></p>
       <button id="send-button" type="submit" disabled>Send to AIS</button>
+      <button id="toggle-help" type="button" class="secondary compact-only" aria-expanded="false">Show field help</button>
     </form>
     <p id="message" role="status" aria-live="polite"></p>
     <p id="last-submission" class="hint"></p>
