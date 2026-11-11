@@ -497,10 +497,12 @@ the Signal K data model.
 
 Full submitted TX sentences are written to the **Signal K server log** with
 timestamps and event names, without needing debug logging enabled. Routine RX
-sentence logging is off by default. To troubleshoot reception, enable **Log
-received AIS sentences** (`logReceivedSentences`) in Plugin Config; this writes
-every valid related raw RX fragment and can produce frequent log messages.
-Disabling it does not affect readback processing or in-memory diagnostics.
+sentence logging uses Signal K's standard debug logging. To troubleshoot reception,
+enable debug logging for `signalk-write-ais-nmea0183` in Signal K's server log
+controls; this writes every valid related raw RX fragment and can produce frequent
+log messages. Disabling debug logging does not affect readback processing or
+in-memory diagnostics. The former `logReceivedSentences` plugin setting is no
+longer used; saved configurations containing it remain compatible.
 Invalid AIVDO/PIWWIVD input is always logged as an error and shown in the panel.
 No log file is created by the plugin: retention is controlled by the Signal K/GX
 logging configuration. In-memory TX/RX diagnostics reset when the plugin stops,

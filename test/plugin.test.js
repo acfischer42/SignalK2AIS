@@ -9,6 +9,7 @@ const { reports } = require('./helpers/ais')
 
 function fixture() {
   const app = new EventEmitter()
+  app.debug = () => {}
   const errors = []
   const data = {
     'design.aisShipType': { value: { name: 'Pleasure', id: 37 } },
@@ -416,28 +417,32 @@ test('configuration rejects global or colliding RX events', () => {
   }
 })
 
-test('server logging includes full submitted sentence and opted-in raw receive fragments', t => {
+test('TX uses server logging and raw RX fragments use Signal K debug logging', t => {
   const log = t.mock.method(console, 'log', () => {})
   const f = fixture()
+  const debug = t.mock.method(f.app, 'debug', () => {})
   f.app.on('serial-ais-toStdout', () => {})
-  f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences: true })
+  f.plugin.start({ providerId: 'ais', regionalFlags: 0 })
   const preview = f.request('POST', '/preview', input).body
   f.request('POST', '/voyage', { ...input, confirmedSentence: preview.sentence })
   const incoming = reports()
   for (const raw of [...incoming.voyage, incoming.navigation]) f.app.emit('ais-voyage-in', raw)
   const logs = log.mock.calls.map(call => call.arguments[0])
   assert.ok(logs.some(line => line.includes('TX submitted') && line.endsWith(preview.sentence)))
+  assert.ok(logs.every(line => !line.includes(' RX ')))
+  const debugLogs = debug.mock.calls.map(call => call.arguments[0])
+  assert.equal(debugLogs.length, incoming.voyage.length + 1)
   for (const raw of [...incoming.voyage, incoming.navigation]) {
-    assert.ok(logs.some(line => /RX \d{4}-\d{2}-\d{2}T/.test(line) && line.endsWith(raw)))
+    assert.ok(debugLogs.some(line => /^RX \d{4}-\d{2}-\d{2}T/.test(line) && line.includes('ais-voyage-in') && line.endsWith(raw)))
   }
 })
 
-test('RX logging defaults off without disabling readback, TX logs, or receive errors', t => {
+test('disabled debug logging preserves readback, TX logs, and receive errors with legacy settings', t => {
   const log = t.mock.method(console, 'log', () => {})
   const f = fixture()
-  assert.equal(f.plugin.schema().properties.logReceivedSentences.default, false)
+  assert.equal(f.plugin.schema().properties.logReceivedSentences, undefined)
   f.app.on('serial-ais-toStdout', () => {})
-  for (const options of [{}, { logReceivedSentences: false }]) {
+  for (const options of [{}, { logReceivedSentences: false }, { logReceivedSentences: true }]) {
     f.plugin.start({ providerId: 'ais', regionalFlags: 0, ...options })
     const preview = f.request('POST', '/preview', input).body
     assert.equal(f.request('POST', '/voyage', { ...input, confirmedSentence: preview.sentence }).status, 202)
@@ -452,26 +457,6 @@ test('RX logging defaults off without disabling readback, TX logs, or receive er
   const logs = log.mock.calls.map(call => call.arguments[0])
   assert.ok(logs.some(line => line.includes('TX submitted')))
   assert.ok(logs.every(line => !line.includes(' RX ')))
-})
-
-test('RX logging can be disabled again on configuration restart', t => {
-  const log = t.mock.method(console, 'log', () => {})
-  const f = fixture()
-  f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences: true })
-  f.app.emit('ais-voyage-in', reports().navigation)
-  assert.equal(log.mock.callCount(), 1)
-  f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences: false })
-  f.app.emit('ais-voyage-in', reports().navigation)
-  assert.equal(log.mock.callCount(), 1)
-  assert.equal(f.request('GET', '/state').body.diagnostics.lastRx.sentence, reports().navigation)
-})
-
-test('RX logging rejects non-boolean configuration', () => {
-  for (const logReceivedSentences of ['false', 0, 1, {}]) {
-    const f = fixture()
-    assert.throws(() => f.plugin.start({ providerId: 'ais', regionalFlags: 0, logReceivedSentences }), /must be a boolean/)
-    assert.equal(f.app.listenerCount('ais-voyage-in'), 0)
-  }
 })
 
 test('Inland sends both confirmed sentences in order, rejects stale count previews', () => {

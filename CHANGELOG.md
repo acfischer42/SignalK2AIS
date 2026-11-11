@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Use Signal K debug logging for raw RX sentences instead of a separate plugin setting; preserve readback, receive errors and TX logs.
+
 ## 0.1.15
 
 - Make per-sentence RX server logging opt-in, off by default; retain readback processing, diagnostics, TX logging and receive errors.
